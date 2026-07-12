@@ -1,27 +1,27 @@
 {
   "mission_code": "LKUSDC8O",
-  "timestamp": "2026-07-12T05:50:52.846374+00:00",
+  "timestamp": "2026-07-12T10:54:53.746504+00:00",
   "crater_count_total": 2,
   "craters": [
     {
       "id": "CR-001",
-      "segment": "RW-07",
+      "segment": "RW-03",
       "size_class": "중형",
       "center_world_cm": [
-        324.8,
-        200.3
+        125.4,
+        199.8
       ],
       "diameter_m": 0.16
     },
     {
       "id": "CR-002",
-      "segment": "RW-03",
+      "segment": "RW-07",
       "size_class": "중형",
       "center_world_cm": [
-        124.8,
-        199.9
+        324.5,
+        199.8
       ],
-      "diameter_m": 0.16
+      "diameter_m": 0.17
     }
   ]
 }
