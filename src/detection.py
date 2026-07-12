@@ -118,7 +118,8 @@ def classify_blob(diameter_mm: float, long_axis_mm: float, aspect_ratio: float):
 
     for name, dims in fc.UXO_SIZE_TABLE_MM.items():
         ref_length = max(dims["w"], dims["d"])
-        ref_aspect = dims["d"] / dims["w"]
+        # aspect_ratio는 항상 max(w,h)/min(w,h) >= 1로 계산되므로 기준값도 동일한 형태로 맞춤
+        ref_aspect = max(dims["w"], dims["d"]) / min(dims["w"], dims["d"])
         len_diff = abs(long_axis_mm - ref_length) / ref_length
         ar_diff = abs(aspect_ratio - ref_aspect) / max(ref_aspect, 0.01)
         score = len_diff * 0.4 + ar_diff * 0.6   # 불발탄은 형태(길쭉함)가 더 결정적
@@ -131,121 +132,7 @@ def classify_blob(diameter_mm: float, long_axis_mm: float, aspect_ratio: float):
 
 
 # =====================================================================
-# 1. 폭파구 탐지 (검정 불규칙 blob)
-# =====================================================================
-class CraterDetector:
-    def __init__(self, dark_threshold=60, min_area_px=80):
-        self.dark_threshold = dark_threshold
-        self.min_area_px = min_area_px
-
-    def detect(self, image_bgr: np.ndarray):
-        gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-        # 어두운 영역(검정 폭파구 모형) 이진화
-        _, binary = cv2.threshold(gray, self.dark_threshold, 255, cv2.THRESH_BINARY_INV)
-        # 노이즈 제거 + 구멍 메우기
-        kernel = np.ones((5, 5), np.uint8)
-        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        detections = []
-        for c in contours:
-            desc = shape_descriptors(c)
-            if desc["area_px"] < self.min_area_px:
-                continue
-            # 폭파구는 불규칙하지만 대체로 둥글둥글함(원형도 0.3~0.9 범위로 완화된 필터)
-            if desc["circularity"] < 0.15:
-                continue
-            M = cv2.moments(c)
-            if M["m00"] == 0:
-                continue
-            cx = M["m10"] / M["m00"]
-            cy = M["m01"] / M["m00"]
-            detections.append({
-                "center_px": (cx, cy),
-                "equiv_diameter_px": desc["equiv_diameter_px"],
-                "contour": c,
-            })
-        return detections
-
-    @staticmethod
-    def classify_size(diameter_mm: float) -> str:
-        """실측 치수표와 대조해서 대형/중형/소형 판정 (최근접 매칭)"""
-        best_class, best_diff = None, float("inf")
-        for cls_name, dims in fc.CRATER_SIZE_TABLE_MM.items():
-            ref_diameter = (dims["w"] + dims["h"]) / 2.0
-            diff = abs(diameter_mm - ref_diameter)
-            if diff < best_diff:
-                best_diff = diff
-                best_class = cls_name
-        return best_class
-
-
-# =====================================================================
-# 2. 불발탄 탐지 (형태 기반: 자탄=원형, 포탄=중간 종횡비, 미사일=매우 길쭉)
-# =====================================================================
-class UXODetector:
-    def __init__(self, dark_threshold=90, min_area_px=30, max_area_px=6000):
-        self.dark_threshold = dark_threshold
-        self.min_area_px = min_area_px
-        self.max_area_px = max_area_px
-
-    def detect(self, image_bgr: np.ndarray):
-        gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-        _, binary = cv2.threshold(gray, self.dark_threshold, 255, cv2.THRESH_BINARY_INV)
-        kernel = np.ones((3, 3), np.uint8)
-        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-
-        contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        detections = []
-        for c in contours:
-            desc = shape_descriptors(c)
-            if not (self.min_area_px < desc["area_px"] < self.max_area_px):
-                continue
-            M = cv2.moments(c)
-            if M["m00"] == 0:
-                continue
-            cx = M["m10"] / M["m00"]
-            cy = M["m01"] / M["m00"]
-            uxo_type, confidence = self._classify_by_shape(desc)
-            detections.append({
-                "center_px": (cx, cy),
-                "equiv_diameter_px": desc["equiv_diameter_px"],
-                "aspect_ratio": desc["aspect_ratio"],
-                "type": uxo_type,
-                "confidence": confidence,
-                "contour": c,
-            })
-        return detections
-
-    @staticmethod
-    def _classify_by_shape(desc):
-        """
-        형태 기술자(원형도/종횡비)로 1차 분류.
-        - 자탄: 거의 정원형 (aspect_ratio ~ 1.0, circularity 높음)
-        - 포탄: 중간 종횡비 (원통형, 세워서 촬영 시 원형/누워서 촬영 시 타원)
-        - 미사일: 매우 길쭉함 (aspect_ratio 큼)
-        치수표(fc.UXO_SIZE_TABLE_MM)의 세로/가로 비율과 대조해 신뢰도를 계산합니다.
-        """
-        ar = desc["aspect_ratio"]
-        ref_ratios = {
-            name: dims["d"] / dims["w"] for name, dims in fc.UXO_SIZE_TABLE_MM.items()
-        }
-        # ref_ratios 예: 자탄 ~0.73, 포탄 ~2.11, 미사일 ~2.3
-        best_type, best_diff = None, float("inf")
-        for name, ratio in ref_ratios.items():
-            diff = abs(ar - ratio)
-            if diff < best_diff:
-                best_diff = diff
-                best_type = name
-        confidence = max(0.3, 1.0 - min(best_diff / 3.0, 0.7))  # 0.3~1.0 사이로 클램프
-        return best_type, round(confidence, 2)
-
-
-# =====================================================================
-# 3. 시설물 상태 분류 (정상/파손/화재) - 색상 기반 + 시계열 깜빡임 검사
+# 1. 시설물 상태 분류 (정상/파손/화재) - 색상 기반 + 시계열 깜빡임 검사
 # =====================================================================
 class FacilityStatusClassifier:
     def __init__(self):
@@ -313,7 +200,7 @@ class FacilityStatusClassifier:
 
 
 # =====================================================================
-# 4. (확장용) YOLO 백엔드 스텁 - 학습된 가중치가 생기면 이 클래스를 완성해서 교체
+# 2. (확장용) YOLO 백엔드 스텁 - 학습된 가중치가 생기면 이 클래스를 완성해서 교체
 # =====================================================================
 class YoloDetectorStub:
     """

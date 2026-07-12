@@ -92,7 +92,7 @@ def main():
     print(f"  - 시설물 상태:")
     for f in outputs["facility_status"]["facilities"]:
         print(f"      {f['slot']} ({f['type']}): {f['status']} (신뢰도 {f['confidence']})")
-    print(f"\n  - 보고서({outputs['report'].get('_source','')}):\n    {outputs['report']['report_text']}")
+    print(f"\n  - 보고서({result['report_source']}):\n    {outputs['report']['report_text']}")
 
 
 if __name__ == "__main__":

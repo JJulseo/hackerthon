@@ -3,16 +3,8 @@
 calibration.py
 ==============
 ArUco 마커로 카메라 픽셀 좌표 <-> 경기장 실좌표(cm)를 변환하는 호모그래피를 계산합니다.
-
-핵심 아이디어:
-  - 대회 규정상 ArUco 마커는 테스트 경기장 포함 '사전 공개'됨
-  - 따라서 호모그래피 행렬은 대회 당일 실시간으로 계산하지 않고,
-    사전 연습 기간에 미리 계산해서 캐시(저장)해두는 것이 이상적.
-  - 이 모듈은 두 가지 모드를 지원:
-      1) calibrate_from_image(): 이미지에서 마커를 검출해 H 행렬을 계산
-      2) load_cached_homography() / save_cached_homography(): 사전 계산값 재사용
+드론이 프레임마다 미세하게 움직일 수 있어, calibrate_from_image()로 매 프레임 재보정합니다.
 """
-import json
 import numpy as np
 import cv2
 
@@ -92,7 +84,7 @@ class FieldCalibrator:
     def pixel_to_world(self, px: float, py: float):
         """픽셀좌표 -> 경기장 실좌표(cm)"""
         if self.homography is None:
-            raise RuntimeError("먼저 calibrate_from_image() 또는 load_cached_homography()를 호출하세요.")
+            raise RuntimeError("먼저 calibrate_from_image()를 호출하세요.")
         pt = np.array([[px, py]], dtype=np.float32).reshape(-1, 1, 2)
         world = cv2.perspectiveTransform(pt, self.homography)
         return float(world[0, 0, 0]), float(world[0, 0, 1])
@@ -100,7 +92,7 @@ class FieldCalibrator:
     def world_to_pixel(self, wx: float, wy: float):
         """실좌표(cm) -> 픽셀좌표. 위치가 고정된 시설물의 ROI를 역으로 찾을 때 사용."""
         if self.homography is None:
-            raise RuntimeError("먼저 calibrate_from_image() 또는 load_cached_homography()를 호출하세요.")
+            raise RuntimeError("먼저 calibrate_from_image()를 호출하세요.")
         H_inv = np.linalg.inv(self.homography)
         pt = np.array([[wx, wy]], dtype=np.float32).reshape(-1, 1, 2)
         px = cv2.perspectiveTransform(pt, H_inv)
@@ -117,55 +109,3 @@ class FieldCalibrator:
         px_y_max = int(np.clip(corners_px[:, 1].max(), 0, h - 1))
         return px_x_min, px_y_min, max(1, px_x_max - px_x_min), max(1, px_y_max - px_y_min)
 
-    def pixels_to_world_batch(self, points_px: np.ndarray):
-        """N x 2 픽셀좌표 배열 -> N x 2 실좌표(cm) 배열"""
-        if self.homography is None:
-            raise RuntimeError("먼저 calibrate_from_image() 또는 load_cached_homography()를 호출하세요.")
-        pts = points_px.reshape(-1, 1, 2).astype(np.float32)
-        world = cv2.perspectiveTransform(pts, self.homography)
-        return world.reshape(-1, 2)
-
-    # -----------------------------------------------------------------
-    def save_cached_homography(self, path: str):
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"homography": self.homography.tolist()}, f, ensure_ascii=False, indent=2)
-
-    def load_cached_homography(self, path: str):
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        self.homography = np.array(data["homography"], dtype=np.float64)
-        return self.homography
-
-
-# -----------------------------------------------------------------------
-# 렌즈 왜곡 보정 (선택적 - 사전에 카메라 캘리브레이션 체커보드로 계수를 구해두면 사용)
-# -----------------------------------------------------------------------
-class LensUndistorter:
-    """
-    DJI Neo2 광각렌즈의 배럴 왜곡을 보정합니다.
-    camera_matrix, dist_coeffs는 사전에 체커보드 촬영으로 구해서 저장해두는 것을 권장합니다.
-    (여기서는 값이 없으면 보정을 건너뛰는 안전한 기본 동작을 제공)
-    """
-    def __init__(self, camera_matrix=None, dist_coeffs=None):
-        self.camera_matrix = camera_matrix
-        self.dist_coeffs = dist_coeffs
-
-    def undistort(self, image_bgr: np.ndarray) -> np.ndarray:
-        if self.camera_matrix is None or self.dist_coeffs is None:
-            return image_bgr  # 보정계수 없으면 원본 그대로 반환
-        return cv2.undistort(image_bgr, self.camera_matrix, self.dist_coeffs)
-
-    def save(self, path: str):
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({
-                "camera_matrix": None if self.camera_matrix is None else self.camera_matrix.tolist(),
-                "dist_coeffs": None if self.dist_coeffs is None else self.dist_coeffs.tolist(),
-            }, f, ensure_ascii=False, indent=2)
-
-    @classmethod
-    def load(cls, path: str):
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        cm = None if data["camera_matrix"] is None else np.array(data["camera_matrix"])
-        dc = None if data["dist_coeffs"] is None else np.array(data["dist_coeffs"])
-        return cls(cm, dc)

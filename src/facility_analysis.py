@@ -39,15 +39,6 @@ def build_facility_report(detections_by_slot: dict):
     return facilities
 
 
-def facility_slot_from_world_xy(x_cm, y_cm):
-    """실좌표가 어느 FA 슬롯에 속하는지 판정"""
-    for slot in fc.FACILITY_SLOTS:
-        b = fc.SEGMENTS[slot]
-        if b["x_min"] <= x_cm <= b["x_max"] and b["y_min"] <= y_cm <= b["y_max"]:
-            return slot
-    return None
-
-
 def summarize_damage(facilities: list):
     """전체 시설물 중 파손/화재/미확인 개수 요약 (LLM 보고서 생성용 보조 통계)"""
     counts = {"정상": 0, "파손": 0, "화재": 0, "미확인": 0}

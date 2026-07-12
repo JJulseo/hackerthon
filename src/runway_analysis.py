@@ -105,17 +105,3 @@ def analyze_runway(obstacle_world_points: list, obstacle_radius_cm: float = 0.0)
         "longest_available_run": {"segments": best_run, "length_m": round(length_m, 1)},
         "available_length_m": round(length_m, 1),
     }
-
-
-def analyze_taxiway(obstacle_world_points: list, which: str = "A", obstacle_radius_cm: float = 0.0):
-    """유도로 A/B 구역도 동일 로직 재사용"""
-    order = fc.TAXIWAY_A_ORDER if which.upper() == "A" else fc.TAXIWAY_B_ORDER
-    blocked = compute_blocked_segments(obstacle_world_points, order, obstacle_radius_cm)
-    best_run = longest_available_run(order, blocked)
-    length_m = run_length_meters(best_run)
-
-    return {
-        "blocked_segments": sorted(blocked, key=lambda s: order.index(s)),
-        "longest_available_run": {"segments": best_run, "length_m": round(length_m, 1)},
-        "available_length_m": round(length_m, 1),
-    }
