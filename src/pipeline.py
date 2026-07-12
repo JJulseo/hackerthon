@@ -225,7 +225,6 @@ class MissionPipeline:
         outputs["report"] = schemas.build_report_json(
             self.mission_code, report_result["text"], report_summary
         )
-        outputs["report"]["_source"] = report_result["source"]  # 디버그용 (실제 제출시 제거 가능)
         saved_files.append(self._save("report.json", outputs["report"]))
         self._toc("report_generation")
 
@@ -240,6 +239,7 @@ class MissionPipeline:
             "saved_files": saved_files,
             "timing": self.timing,
             "validation": validation,
+            "report_source": report_result["source"],  # 디버그용, 저장되는 JSON에는 포함 안 됨
         }
 
     # -----------------------------------------------------------------
