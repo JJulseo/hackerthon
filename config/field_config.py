@@ -138,3 +138,35 @@ MISSION_CODE = "LKUSDC8O"  # 예시. 실제 대회에서 팀별로 부여된 코
 # 8. 임무 제한시간
 # ---------------------------------------------------------
 MISSION_TIME_LIMIT_SEC = 180
+
+# ---------------------------------------------------------
+# 9. 탐지 백엔드 설정 (고전 CV <-> YOLO 전환)
+# ---------------------------------------------------------
+# 대회 현장에서 테스트 기간 중 촬영한 이미지로 YOLO 학습이 끝나면
+# 아래 두 값만 "yolo"로 바꾸면 src/pipeline.py 수정 없이 백엔드가 전환됩니다.
+# (src/detection.py의 build_object_detector()/build_facility_classifier() 참고)
+DETECTOR_BACKEND = "classical"   # "classical" | "yolo" - 폭파구/불발탄 통합 탐지
+FACILITY_BACKEND = "classical"   # "classical" | "yolo" - 시설물 상태(정상/파손/화재) 분류
+
+# --- 폭파구/불발탄 YOLO 모델 설정 ---
+YOLO_OBJECT_WEIGHTS = "models/object_detector.pt"
+YOLO_OBJECT_CONF_THRESHOLD = 0.4
+# 학습 클래스 idx -> (category, subtype). data.yaml의 names 순서와 반드시 일치시킬 것.
+YOLO_OBJECT_CLASS_MAP = {
+    0: ("crater", "대형"),
+    1: ("crater", "중형"),
+    2: ("crater", "소형"),
+    3: ("uxo", "미사일"),
+    4: ("uxo", "포탄"),
+    5: ("uxo", "자탄"),
+}
+
+# --- 시설물 상태 YOLO 모델 설정 ---
+YOLO_FACILITY_WEIGHTS = "models/facility_classifier.pt"
+YOLO_FACILITY_CONF_THRESHOLD = 0.4
+# 학습 클래스 idx -> 상태 라벨. data.yaml/분류 폴더 순서와 반드시 일치시킬 것.
+YOLO_FACILITY_CLASS_MAP = {
+    0: "정상",
+    1: "파손",
+    2: "화재",
+}
