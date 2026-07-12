@@ -10,6 +10,10 @@ run_mission.py
 
   2) 실제 촬영된 이미지 폴더로 실행:
      python scripts/run_mission.py --images /path/to/frames_dir
+
+  3) YOLO 학습이 끝난 뒤 해당 실행만 YOLO 백엔드로 돌려보기
+     (기본값은 field_config.DETECTOR_BACKEND/FACILITY_BACKEND):
+     python scripts/run_mission.py --images /path/to/frames_dir --detector-backend yolo
 """
 import os
 import sys
@@ -41,6 +45,10 @@ def main():
     parser.add_argument("--images", type=str, default=None, help="실제 이미지가 있는 폴더 경로")
     parser.add_argument("--output", type=str, default="output", help="결과 JSON 저장 폴더")
     parser.add_argument("--no-llm", action="store_true", help="로컬 LLM 시도 없이 템플릿 보고서만 사용")
+    parser.add_argument("--detector-backend", choices=["classical", "yolo"], default=None,
+                         help="폭파구/불발탄 탐지 백엔드 (생략 시 field_config.DETECTOR_BACKEND 사용)")
+    parser.add_argument("--facility-backend", choices=["classical", "yolo"], default=None,
+                         help="시설물 상태 분류 백엔드 (생략 시 field_config.FACILITY_BACKEND 사용)")
     args = parser.parse_args()
 
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -66,7 +74,9 @@ def main():
 
     output_dir = os.path.join(base_dir, args.output)
     pipeline = MissionPipeline(mission_code=fc.MISSION_CODE, use_llm=not args.no_llm,
-                                output_dir=output_dir)
+                                output_dir=output_dir,
+                                detector_backend=args.detector_backend,
+                                facility_backend=args.facility_backend)
     result = pipeline.run(frames)
 
     print(f"[3/3] 완료! 결과 저장 위치: {output_dir}\n")

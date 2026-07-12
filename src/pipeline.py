@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import field_config as fc
 import schemas
 from calibration import FieldCalibrator
-from detection import detect_dark_blobs, classify_blob, mask_out_regions, FacilityStatusClassifier
+from detection import classify_blob, mask_out_regions, build_object_detector, build_facility_classifier
 from geo_dedup import dedup_by_world_distance
 import runway_analysis as rwa
 import facility_analysis as fca
@@ -36,14 +36,21 @@ from validator import validate_all
 
 class MissionPipeline:
     def __init__(self, mission_code: str = fc.MISSION_CODE, use_llm: bool = True,
-                 output_dir: str = "output"):
+                 output_dir: str = "output",
+                 detector_backend: str = None, facility_backend: str = None):
+        """
+        detector_backend / facility_backend: "classical" | "yolo" (생략 시 field_config의
+        DETECTOR_BACKEND / FACILITY_BACKEND 사용). 대회 현장에서 YOLO 학습이 끝나면
+        field_config 값만 바꾸거나, 이 인자로 특정 실행만 다른 백엔드로 돌려볼 수 있습니다.
+        """
         self.mission_code = mission_code
         self.use_llm = use_llm
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
 
         self.calibrator = FieldCalibrator()
-        self.facility_classifier = FacilityStatusClassifier()
+        self.object_detector = build_object_detector(detector_backend)
+        self.facility_classifier = build_facility_classifier(facility_backend)
 
         self.timing = {}
 
@@ -98,17 +105,21 @@ class MissionPipeline:
                 marker_polygons.append(expanded)
             frame_clean = mask_out_regions(frame, marker_polygons, fill_value=255)
 
-            # -- 어두운 물체(폭파구 후보 + 불발탄 후보) 통합 탐지 --
-            # 탐지는 한 번만 하고, 실측 mm 크기+형태로 사후에 '폭파구 vs 불발탄'을 나눕니다.
-            for blob in detect_dark_blobs(frame_clean):
-                px, py = blob["center_px"]
+            # -- 폭파구/불발탄 통합 탐지 (백엔드는 field_config.DETECTOR_BACKEND로 전환) --
+            # 고전 CV 백엔드는 분류를 안 채워서 돌려주므로, 실측 mm 크기+형태로 여기서 분류합니다.
+            # YOLO 백엔드는 모델이 이미 분류까지 마쳐서 돌려주므로 그 값을 그대로 씁니다.
+            for det in self.object_detector.detect(frame_clean):
+                px, py = det.center_px
                 wx, wy = self.calibrator.pixel_to_world(px, py)
-                diameter_cm = self._pixel_length_to_world_cm(px, py, blob["equiv_diameter_px"])
+                diameter_cm = self._pixel_length_to_world_cm(px, py, det.equiv_diameter_px)
                 diameter_mm = diameter_cm * 10.0
-                long_axis_cm = self._pixel_length_to_world_cm(px, py, blob["long_axis_px"])
+                long_axis_cm = self._pixel_length_to_world_cm(px, py, det.long_axis_px)
                 long_axis_mm = long_axis_cm * 10.0
 
-                category, subtype, confidence = classify_blob(diameter_mm, long_axis_mm, blob["aspect_ratio"])
+                if det.category is not None:
+                    category, subtype, confidence = det.category, det.subtype, det.confidence
+                else:
+                    category, subtype, confidence = classify_blob(diameter_mm, long_axis_mm, det.aspect_ratio)
 
                 if category == "crater":
                     raw_craters.append({
@@ -180,7 +191,7 @@ class MissionPipeline:
         for slot, rois in facility_rois.items():
             if not rois:
                 continue  # 이 슬롯은 프레임에 한 번도 잡히지 않음 -> '미확인'으로 남게 됨
-            status, conf = self.facility_classifier.classify_with_temporal_check(rois)
+            status, conf = self.facility_classifier.classify(rois)
             detections_by_slot[slot] = {"status": status, "confidence": conf}
         facilities = fca.build_facility_report(detections_by_slot)
         outputs["facility_status"] = schemas.build_facility_status_json(self.mission_code, facilities)
