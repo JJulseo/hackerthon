@@ -1,0 +1,27 @@
+{
+  "mission_code": "LKUSDC8O",
+  "timestamp": "2026-07-12T05:50:52.875664+00:00",
+  "uxo_count_total": 2,
+  "uxos": [
+    {
+      "id": "UXO-001",
+      "segment": "TW-B2",
+      "type": "포탄",
+      "center_world_cm": [
+        150.2,
+        280.2
+      ],
+      "confidence": 0.9
+    },
+    {
+      "id": "UXO-002",
+      "segment": "RW-09",
+      "type": "미사일",
+      "center_world_cm": [
+        440.2,
+        200.2
+      ],
+      "confidence": 0.96
+    }
+  ]
+}
