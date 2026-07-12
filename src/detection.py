@@ -62,7 +62,8 @@ def shape_descriptors(contour):
     }
 
 
-def detect_dark_blobs(image_bgr: np.ndarray, dark_threshold=80, min_area_px=40, max_area_px=20000):
+def detect_dark_blobs(image_bgr: np.ndarray, dark_threshold=fc.BLOB_DARK_THRESHOLD,
+                       min_area_px=fc.BLOB_MIN_AREA_PX, max_area_px=fc.BLOB_MAX_AREA_PX):
     """폭파구/불발탄 모두 어두운 물체라는 공통점을 이용한 통합 blob 탐지 (고전 CV 백엔드용)"""
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(gray, dark_threshold, 255, cv2.THRESH_BINARY_INV)
@@ -93,7 +94,7 @@ def detect_dark_blobs(image_bgr: np.ndarray, dark_threshold=80, min_area_px=40, 
     return blobs
 
 
-def mask_out_regions(image_bgr: np.ndarray, polygons: list, fill_value=255):
+def mask_out_regions(image_bgr: np.ndarray, polygons: list, fill_value=fc.MARKER_MASK_FILL_VALUE):
     """
     ArUco 마커처럼 '물체가 아닌데 어둡게 보이는' 영역을 미리 지워서(흰색 등으로 채움)
     오탐을 방지합니다. polygons: [Nx2 array, ...] 픽셀좌표 다각형 리스트 (여유있게 살짝 확대해서 사용 권장)
@@ -119,26 +120,28 @@ def classify_blob(diameter_mm: float, long_axis_mm: float, aspect_ratio: float):
     """
     candidates = []
 
+    crater_w = fc.CRATER_SCORE_WEIGHTS
     for name, dims in fc.CRATER_SIZE_TABLE_MM.items():
         ref_diameter = (dims["w"] + dims["h"]) / 2.0
         ref_aspect = max(dims["w"], dims["h"]) / min(dims["w"], dims["h"])
         diam_diff = abs(diameter_mm - ref_diameter) / ref_diameter
         ar_diff = abs(aspect_ratio - ref_aspect) / ref_aspect
-        score = diam_diff * 0.7 + ar_diff * 0.3   # 폭파구는 크기가 더 결정적
+        score = diam_diff * crater_w["diameter"] + ar_diff * crater_w["aspect_ratio"]
         candidates.append(("crater", name, score))
 
+    uxo_w = fc.UXO_SCORE_WEIGHTS
     for name, dims in fc.UXO_SIZE_TABLE_MM.items():
         ref_length = max(dims["w"], dims["d"])
         # aspect_ratio는 항상 max(w,h)/min(w,h) >= 1로 계산되므로 기준값도 동일한 형태로 맞춤
         ref_aspect = max(dims["w"], dims["d"]) / min(dims["w"], dims["d"])
         len_diff = abs(long_axis_mm - ref_length) / ref_length
         ar_diff = abs(aspect_ratio - ref_aspect) / max(ref_aspect, 0.01)
-        score = len_diff * 0.4 + ar_diff * 0.6   # 불발탄은 형태(길쭉함)가 더 결정적
+        score = len_diff * uxo_w["length"] + ar_diff * uxo_w["aspect_ratio"]
         candidates.append(("uxo", name, score))
 
     candidates.sort(key=lambda x: x[2])
     category, subtype, score = candidates[0]
-    confidence = max(0.3, round(1.0 - min(score, 0.7), 2))
+    confidence = max(fc.CLASSIFY_CONFIDENCE_FLOOR, round(1.0 - min(score, fc.CLASSIFY_SCORE_CAP), 2))
     return category, subtype, confidence
 
 
@@ -177,7 +180,8 @@ class ClassicalBlobDetector(ObjectDetectorBackend):
     """색상/형태 기반 탐지 (지금 바로 동작, 학습 불필요).
     분류(category/subtype/confidence)는 실좌표 mm 변환이 필요해 pipeline에서 classify_blob()으로 채움."""
 
-    def __init__(self, dark_threshold=80, min_area_px=40, max_area_px=20000):
+    def __init__(self, dark_threshold=fc.BLOB_DARK_THRESHOLD, min_area_px=fc.BLOB_MIN_AREA_PX,
+                 max_area_px=fc.BLOB_MAX_AREA_PX):
         self.dark_threshold = dark_threshold
         self.min_area_px = min_area_px
         self.max_area_px = max_area_px
@@ -272,17 +276,19 @@ class ClassicalFacilityClassifier(FacilityStatusBackend):
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
 
         # 화재색 범위 (빨강~주황, 높은 채도/명도)
-        fire_mask1 = cv2.inRange(hsv, (0, 120, 150), (15, 255, 255))
-        fire_mask2 = cv2.inRange(hsv, (160, 120, 150), (179, 255, 255))
-        fire_ratio = (cv2.countNonZero(fire_mask1) + cv2.countNonZero(fire_mask2)) / max(1, roi.shape[0] * roi.shape[1])
+        fire_pixels = sum(
+            cv2.countNonZero(cv2.inRange(hsv, lo, hi))
+            for lo, hi in fc.FACILITY_FIRE_HSV_RANGES
+        )
+        fire_ratio = fire_pixels / max(1, roi.shape[0] * roi.shape[1])
 
-        if fire_ratio > 0.03:
-            return "화재", round(min(1.0, fire_ratio * 10), 2)
+        if fire_ratio > fc.FACILITY_FIRE_RATIO_THRESHOLD:
+            return "화재", round(min(1.0, fire_ratio * fc.FACILITY_FIRE_CONFIDENCE_SCALE), 2)
 
         # 파손 추정: 어두운 불규칙 영역 비율(그림자/균열/붕괴 등으로 어두워짐)
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        dark_ratio = np.mean(gray < 60)
-        if dark_ratio > 0.35:
+        dark_ratio = np.mean(gray < fc.FACILITY_DAMAGE_GRAY_THRESHOLD)
+        if dark_ratio > fc.FACILITY_DAMAGE_DARK_RATIO_THRESHOLD:
             return "파손", round(min(1.0, dark_ratio), 2)
 
         return "정상", round(1.0 - dark_ratio, 2)
@@ -307,14 +313,14 @@ class ClassicalFacilityClassifier(FacilityStatusBackend):
         brightness_series = [np.mean(r) for r in rois_bgr]
         flicker = float(np.std(brightness_series))
 
-        if fire_ratio_frames > 0.3 and flicker > 1.0:
+        if fire_ratio_frames > fc.FACILITY_FIRE_FRAME_RATIO_THRESHOLD and flicker > fc.FACILITY_FIRE_FLICKER_THRESHOLD:
             return "화재", round(float(np.mean(confidences)), 2)
         else:
             # 화재로 보였지만 깜빡임이 없다면 정지된 붉은 물체(오탐 가능성) -> 파손/정상 재판정
             non_fire_labels = [l for l in labels if l != "화재"]
             if non_fire_labels:
-                return Counter(non_fire_labels).most_common(1)[0][0], 0.5
-            return "파손", 0.4
+                return Counter(non_fire_labels).most_common(1)[0][0], fc.FACILITY_FALLBACK_NONFIRE_CONFIDENCE
+            return "파손", fc.FACILITY_FALLBACK_DAMAGE_CONFIDENCE
 
 
 class YoloFacilityClassifier(FacilityStatusBackend):

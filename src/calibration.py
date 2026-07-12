@@ -42,17 +42,18 @@ class FieldCalibrator:
         gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
         corners, ids = self.detect_markers(image_bgr)
 
-        if ids is None or len(ids) < 4:
+        if ids is None or len(ids) < fc.ARUCO_MIN_MARKERS:
             raise RuntimeError(
-                f"ArUco 마커가 4개 미만 검출됨(검출:{0 if ids is None else len(ids)}). "
+                f"ArUco 마커가 {fc.ARUCO_MIN_MARKERS}개 미만 검출됨(검출:{0 if ids is None else len(ids)}). "
                 "드론 고도/각도를 조정하거나 조명을 확인하세요."
             )
 
         # 서브픽셀 코너 정밀화 (호모그래피 오차를 줄이는 핵심 포인트)
         if refine_subpixel:
-            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+                        fc.ARUCO_SUBPIX_CRITERIA_MAX_ITER, fc.ARUCO_SUBPIX_CRITERIA_EPS)
             for c in corners:
-                cv2.cornerSubPix(gray, c, (5, 5), (-1, -1), criteria)
+                cv2.cornerSubPix(gray, c, fc.ARUCO_SUBPIX_WINDOW, (-1, -1), criteria)
 
         pixel_pts = []
         world_pts = []
@@ -67,8 +68,8 @@ class FieldCalibrator:
             world_pts.append(fc.ARUCO_MARKER_WORLD_POSITIONS[marker_id])
         self.last_marker_corners = marker_corner_list
 
-        if len(pixel_pts) < 4:
-            raise RuntimeError("설정된 마커 ID와 일치하는 마커가 4개 미만입니다.")
+        if len(pixel_pts) < fc.ARUCO_MIN_MARKERS:
+            raise RuntimeError(f"설정된 마커 ID와 일치하는 마커가 {fc.ARUCO_MIN_MARKERS}개 미만입니다.")
 
         pixel_pts = np.array(pixel_pts, dtype=np.float32)
         world_pts = np.array(world_pts, dtype=np.float32)

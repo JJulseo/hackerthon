@@ -36,7 +36,7 @@ from validator import validate_all
 
 class MissionPipeline:
     def __init__(self, mission_code: str = fc.MISSION_CODE, use_llm: bool = True,
-                 output_dir: str = "output",
+                 output_dir: str = fc.OUTPUT_DIR,
                  detector_backend: str = None, facility_backend: str = None):
         """
         detector_backend / facility_backend: "classical" | "yolo" (생략 시 field_config의
@@ -99,11 +99,11 @@ class MissionPipeline:
             # -- 마커 영역은 미리 지워서 오탐 방지 (흑백 패턴이 어두운 물체로 오인될 수 있음) --
             marker_polygons = []
             for corner_set in self.calibrator.last_marker_corners:
-                # 여유를 살짝 두고(10% 확장) 마스킹해 경계 부분까지 확실히 제거
+                # 여유를 살짝 두고 마스킹해 경계 부분까지 확실히 제거 (fc.MARKER_MASK_EXPAND_RATIO)
                 center = corner_set.mean(axis=0)
-                expanded = center + (corner_set - center) * 1.15
+                expanded = center + (corner_set - center) * fc.MARKER_MASK_EXPAND_RATIO
                 marker_polygons.append(expanded)
-            frame_clean = mask_out_regions(frame, marker_polygons, fill_value=255)
+            frame_clean = mask_out_regions(frame, marker_polygons, fill_value=fc.MARKER_MASK_FILL_VALUE)
 
             # -- 폭파구/불발탄 통합 탐지 (백엔드는 field_config.DETECTOR_BACKEND로 전환) --
             # 고전 CV 백엔드는 분류를 안 채워서 돌려주므로, 실측 mm 크기+형태로 여기서 분류합니다.
@@ -151,7 +151,7 @@ class MissionPipeline:
 
         # ---------------- 3. 폭파구 중복 제거 + 구간 배정 ----------------
         self._tic("crater_postprocess")
-        craters_deduped = dedup_by_world_distance(raw_craters, distance_threshold_cm=5.0)
+        craters_deduped = dedup_by_world_distance(raw_craters, distance_threshold_cm=fc.CRATER_DEDUP_DISTANCE_CM)
         craters_with_seg = uxa.assign_crater_segments(craters_deduped)
         self._toc("crater_postprocess")
 
@@ -200,7 +200,7 @@ class MissionPipeline:
 
         # ---------------- 6. 불발탄 중복 제거 + 구간 배정 ----------------
         self._tic("uxo_postprocess")
-        uxo_deduped = dedup_by_world_distance(raw_uxo, distance_threshold_cm=3.0)
+        uxo_deduped = dedup_by_world_distance(raw_uxo, distance_threshold_cm=fc.UXO_DEDUP_DISTANCE_CM)
         uxo_with_seg = uxa.assign_uxo_segments(uxo_deduped)
         self._toc("uxo_postprocess")
 

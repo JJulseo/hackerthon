@@ -43,7 +43,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--synthetic", action="store_true", help="합성 테스트 이미지 생성 후 실행")
     parser.add_argument("--images", type=str, default=None, help="실제 이미지가 있는 폴더 경로")
-    parser.add_argument("--output", type=str, default="output", help="결과 JSON 저장 폴더")
+    parser.add_argument("--test-image-dir", type=str, default=fc.TEST_IMAGE_DIR,
+                         help="--synthetic 실행 시 합성 테스트/학습용 이미지를 저장할 폴더"
+                              " (기본값: field_config.TEST_IMAGE_DIR)")
+    parser.add_argument("--output", type=str, default=fc.OUTPUT_DIR,
+                         help="결과 JSON 저장 폴더 (기본값: field_config.OUTPUT_DIR)")
     parser.add_argument("--no-llm", action="store_true", help="로컬 LLM 시도 없이 템플릿 보고서만 사용")
     parser.add_argument("--detector-backend", choices=["classical", "yolo"], default=None,
                          help="폭파구/불발탄 탐지 백엔드 (생략 시 field_config.DETECTOR_BACKEND 사용)")
@@ -56,7 +60,7 @@ def main():
     if args.synthetic:
         sys.path.insert(0, os.path.join(base_dir, "scripts"))
         import generate_test_scene
-        test_img_dir = os.path.join(base_dir, "test_images")
+        test_img_dir = os.path.join(base_dir, args.test_image_dir)
         print(f"[1/3] 합성 테스트 이미지 생성 중... -> {test_img_dir}")
         generate_test_scene.main(test_img_dir)
         frames = load_frames_from_dir(test_img_dir)

@@ -12,11 +12,16 @@ Ollama는 http://localhost:11434 에서 REST API를 제공하며, 이는 '외부
 -> 이러면 LLM이 죽어도 임무는 절대 실패하지 않습니다.
 """
 import json
+import sys
+import os
 import requests
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen2.5:3b"   # 대회 PC 사양에 맞춰 사전에 벤치마크 후 결정
-REQUEST_TIMEOUT_SEC = 8        # 임무 시간이 촉박하므로 타임아웃을 짧게 설정
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "config"))
+import field_config as fc
+
+OLLAMA_URL = fc.OLLAMA_URL
+OLLAMA_MODEL = fc.OLLAMA_MODEL   # 대회 PC 사양에 맞춰 사전에 벤치마크 후 결정 (field_config.py에서 조정)
+REQUEST_TIMEOUT_SEC = fc.OLLAMA_REQUEST_TIMEOUT_SEC  # 임무 시간이 촉박하므로 타임아웃을 짧게 설정
 
 
 # JSON 형식을 강제하기 위한 프롬프트. Ollama의 format="json" 옵션과 함께 사용하면
@@ -46,7 +51,7 @@ def generate_report_via_local_llm(summary: dict, model: str = OLLAMA_MODEL) -> s
         "model": model,
         "prompt": prompt,
         "stream": False,
-        "options": {"temperature": 0.2},  # 보고서이므로 창의성보다 일관성 우선
+        "options": {"temperature": fc.OLLAMA_TEMPERATURE},  # 보고서이므로 창의성보다 일관성 우선
     }
     resp = requests.post(OLLAMA_URL, json=payload, timeout=REQUEST_TIMEOUT_SEC)
     resp.raise_for_status()

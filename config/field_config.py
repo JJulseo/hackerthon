@@ -170,3 +170,58 @@ YOLO_FACILITY_CLASS_MAP = {
     1: "파손",
     2: "화재",
 }
+
+# ---------------------------------------------------------
+# 10. 고전 CV 알고리즘 하이퍼파라미터
+#     실제 드론 촬영본으로 재조정할 값들을 전부 이 섹션에 모아둠
+# ---------------------------------------------------------
+# -- 어두운 blob(폭파구/불발탄 후보) 탐지 (detection.detect_dark_blobs) --
+BLOB_DARK_THRESHOLD = 80   # 이 값보다 어두운 픽셀만 물체 후보로 봄 (0~255, 낮을수록 더 어두운 것만 탐지)
+BLOB_MIN_AREA_PX = 40      # 이보다 작은 컨투어는 노이즈로 무시
+BLOB_MAX_AREA_PX = 20000   # 이보다 큰 컨투어는 그림자 등으로 보고 무시
+
+# -- 폭파구/불발탄 분류 점수 가중치 (detection.classify_blob) --
+CRATER_SCORE_WEIGHTS = {"diameter": 0.7, "aspect_ratio": 0.3}  # 폭파구는 크기가 더 결정적
+UXO_SCORE_WEIGHTS = {"length": 0.4, "aspect_ratio": 0.6}       # 불발탄은 길쭉한 형태가 더 결정적
+CLASSIFY_CONFIDENCE_FLOOR = 0.3   # 분류 신뢰도 최저값
+CLASSIFY_SCORE_CAP = 0.7          # 신뢰도 = 1 - min(점수, 이 값)
+
+# -- 시설물 상태(정상/파손/화재) 판정 (detection.ClassicalFacilityClassifier) --
+FACILITY_FIRE_HSV_RANGES = [                # 화재색(빨강~주황) HSV 범위, (하한, 상한) 쌍의 리스트
+    ((0, 120, 150), (15, 255, 255)),
+    ((160, 120, 150), (179, 255, 255)),
+]
+FACILITY_FIRE_RATIO_THRESHOLD = 0.03        # 화재로 1차 판정하는 최소 화재색 픽셀 비율
+FACILITY_FIRE_CONFIDENCE_SCALE = 10.0       # fire_ratio -> confidence 환산 배율
+FACILITY_DAMAGE_GRAY_THRESHOLD = 60         # 이보다 어두운 픽셀을 '파손 후보'로 셈 (그레이스케일 0~255)
+FACILITY_DAMAGE_DARK_RATIO_THRESHOLD = 0.35 # 파손으로 판정하는 최소 어두운 픽셀 비율
+FACILITY_FIRE_FRAME_RATIO_THRESHOLD = 0.3   # 여러 프레임 중 화재로 확정하는 최소 프레임 비율
+FACILITY_FIRE_FLICKER_THRESHOLD = 1.0       # 화재 확정에 필요한 프레임 간 밝기 표준편차(깜빡임)
+FACILITY_FALLBACK_NONFIRE_CONFIDENCE = 0.5  # 화재로 보였으나 깜빡임 없어 non-화재로 재판정할 때 신뢰도
+FACILITY_FALLBACK_DAMAGE_CONFIDENCE = 0.4   # 위 재판정에서 non-화재 라벨조차 없을 때의 기본 신뢰도
+
+# -- 지오레퍼런스드 중복 제거 거리 임계값 (geo_dedup.dedup_by_world_distance, 단위: cm) --
+CRATER_DEDUP_DISTANCE_CM = 5.0
+UXO_DEDUP_DISTANCE_CM = 3.0
+
+# -- ArUco 캘리브레이션 (calibration.FieldCalibrator) --
+ARUCO_MIN_MARKERS = 4                  # 호모그래피 계산에 필요한 최소 마커 개수
+ARUCO_SUBPIX_WINDOW = (5, 5)           # cornerSubPix 탐색 윈도우 크기
+ARUCO_SUBPIX_CRITERIA_MAX_ITER = 30    # cornerSubPix 반복 종료 조건 (최대 반복 횟수)
+ARUCO_SUBPIX_CRITERIA_EPS = 0.001      # cornerSubPix 반복 종료 조건 (오차 임계값)
+
+# -- 마커 마스킹 (pipeline.MissionPipeline) --
+MARKER_MASK_EXPAND_RATIO = 1.15  # 마커 영역 마스킹 시 여유 확장 비율 (경계까지 확실히 제거)
+MARKER_MASK_FILL_VALUE = 255     # 마스킹 채움 색상 (흰색)
+
+# -- 로컬 LLM 설정 (report_generator.py) --
+OLLAMA_URL = "http://localhost:11434/api/generate"
+OLLAMA_MODEL = "qwen2.5:3b"          # 대회 PC 사양에 맞춰 사전에 벤치마크 후 결정
+OLLAMA_REQUEST_TIMEOUT_SEC = 8       # 임무 시간이 촉박하므로 타임아웃을 짧게 설정
+OLLAMA_TEMPERATURE = 0.2             # 보고서이므로 창의성보다 일관성 우선
+
+# ---------------------------------------------------------
+# 11. 파일 경로 (원하는 위치로 자유롭게 변경 가능, CLI 인자로도 override 가능)
+# ---------------------------------------------------------
+TEST_IMAGE_DIR = "test_images"  # --synthetic 실행 시 합성 테스트/학습용 이미지가 저장되는 폴더
+OUTPUT_DIR = "output"           # 8개 결과 JSON이 저장되는 폴더

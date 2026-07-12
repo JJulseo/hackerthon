@@ -1,7 +1,4 @@
-도현 사랑해
-도이게이야~
 # 공군 해커톤 AI경진대회 - 정찰/전투피해평가(BDA) 파이프라인
-=======
 
 드론이 촬영한 디오라마 영상에서 **폭파구/시설물 피해/불발탄**을 탐지하고,
 대회 규격(mission_code 표)에 맞는 8개 JSON 파일을 자동 생성하는 전체 파이프라인입니다.
@@ -78,11 +75,25 @@ python scripts/run_mission.py --images /path/to/frames_directory
 python scripts/run_mission.py --synthetic --no-llm
 ```
 
-### 5) 단위 테스트 실행
+### 5) 이미지/결과 저장 폴더를 직접 지정
+```bash
+python scripts/run_mission.py --synthetic --test-image-dir my_train_images --output my_results
+```
+기본값은 `config/field_config.py`의 `TEST_IMAGE_DIR`/`OUTPUT_DIR`이며, 위처럼 실행할 때마다
+CLI 인자로도 바꿀 수 있습니다.
+
+### 6) 단위 테스트 실행
 ```bash
 python tests/test_core.py
 # 또는: python -m pytest tests/ -v
 ```
+
+## 하이퍼파라미터/알고리즘 파라미터
+
+탐지 임계값, 분류 가중치, 캘리브레이션 설정, 로컬 LLM 설정 등 조정 가능한 값은
+전부 `config/field_config.py`의 "10. 고전 CV 알고리즘 하이퍼파라미터" 섹션에
+모아뒀습니다. 실제 드론 촬영본으로 재조정할 때 이 파일 하나만 보면 됩니다
+(예: `BLOB_DARK_THRESHOLD`, `FACILITY_FIRE_RATIO_THRESHOLD`, `CRATER_DEDUP_DISTANCE_CM` 등).
 
 ## 탐지 백엔드 전환 (고전 CV ↔ YOLO)
 

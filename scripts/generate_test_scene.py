@@ -448,5 +448,5 @@ def main(out_dir):
 
 
 if __name__ == "__main__":
-    out = sys.argv[1] if len(sys.argv) > 1 else "test_images"
+    out = sys.argv[1] if len(sys.argv) > 1 else fc.TEST_IMAGE_DIR
     main(out)
